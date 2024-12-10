@@ -36,6 +36,24 @@ const pool = mysql.createPool({
   database: process.env.RDS_DB_NAME,
 });
 
+// Add this at the start of your server
+pool.getConnection()
+  .then(connection => {
+    console.log('Database connected successfully');
+    connection.release();
+  })
+  .catch(err => {
+    console.error('Error connecting to the database:', err);
+  });
+
+  pool.query('SHOW DATABASES')
+    .then(([rows]) => {
+        console.log('Available databases:', rows);
+    })
+    .catch(err => {
+        console.error('Database error:', err);
+    });
+
 // Multer setup for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
