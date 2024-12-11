@@ -54,6 +54,23 @@ pool.getConnection()
         console.error('Database error:', err);
     });
 
+    pool.query('SHOW TABLES FROM contact_system')
+    .then(([rows]) => {
+        console.log('Tables in contact_system:', rows);
+    })
+    .catch(err => {
+        console.error('Error checking tables:', err);
+    });
+
+// Also check if there are any records
+pool.query('SELECT * FROM contact_system.submissions')
+    .then(([rows]) => {
+        console.log('Number of submissions:', rows.length);
+    })
+    .catch(err => {
+        console.error('Error querying submissions:', err);
+    });
+
 // Multer setup for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -62,6 +79,16 @@ const upload = multer({
   },
 });
 
+
+app.get('/', (req, res) => {
+  res.send('Welcome to the Contact System API!');
+});
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 // Monitoring middleware
 app.use(async (req, res, next) => {
   const start = Date.now();
@@ -200,6 +227,11 @@ app.use((err, req, res, next) => {
   
   res.status(500).json({ error: 'Internal Server Error' });
 });
+app.get('/', (_req, res) => {
+  res.send('Welcome to the Contact System API!');
+});
+
+
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
