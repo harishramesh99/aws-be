@@ -11,6 +11,8 @@ app.use(cors());
 app.use(express.json());
 
 // AWS S3 setup
+// AWS S3 setup
+
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
   credentials: {
@@ -82,7 +84,7 @@ const upload = multer({
 
 
 // Monitoring middleware
-app.use(async (req, res, next) => {
+app.use(async (_req, res, next) => {
   const start = Date.now();
 
   res.on('finish', async () => {
@@ -123,82 +125,10 @@ app.use(async (req, res, next) => {
   next();
 });
 
-// Routes
-app.post('/api/contact', upload.single('image'), async (req, res) => {
-  try {
-    const { name, email, message } = req.body;
-    let imageUrl = null;
 
-    if (req.file) {
-      const fileKey = `contacts/${Date.now()}-${req.file.originalname}`;
-      
-      await s3Client.send(new PutObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET,
-        Key: fileKey,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype,
-      }));
-
-      imageUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
-    }
-
-    const [result] = await pool.execute(
-      'INSERT INTO submissions (name, email, message, image_url) VALUES (?, ?, ?, ?)',
-      [name, email, message, imageUrl]
-    );
-
-    res.json({ success: true, id: result.insertId, imageUrl });
-  } catch (error) {
-    console.error('Error:', error);
-    // Log error to CloudWatch
-    await cloudwatch.putMetricData({
-      MetricData: [
-        {
-          MetricName: 'Errors',
-          Value: 1,
-          Unit: 'Count',
-          Dimensions: [
-            {
-              Name: 'ErrorType',
-              Value: 'ContactSubmissionError'
-            }
-          ]
-        }
-      ],
-      Namespace: 'ContactFormAPI'
-    }).catch(console.error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/submissions', async (req, res) => {
-  try {
-    const [rows] = await pool.query('SELECT * FROM submissions ORDER BY created_at DESC');
-    res.json(rows);
-  } catch (error) {
-    // Log error to CloudWatch
-    await cloudwatch.putMetricData({
-      MetricData: [
-        {
-          MetricName: 'Errors',
-          Value: 1,
-          Unit: 'Count',
-          Dimensions: [
-            {
-              Name: 'ErrorType',
-              Value: 'FetchSubmissionsError'
-            }
-          ]
-        }
-      ],
-      Namespace: 'ContactFormAPI'
-    }).catch(console.error);
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // Global error handler
-app.use((err, req, res, next) => {
+app.use((err, _req, res, next) => {
   console.error(err);
   cloudwatch.putMetricData({
     MetricData: [
@@ -221,6 +151,81 @@ app.use((err, req, res, next) => {
 });
 app.get('/', (_req, res) => {
   res.send('Welcome to the Contact System API!');
+});
+
+// Routes
+app.post('/api/contact', upload.single('image'), async (_req, res) => {
+  try {
+    const { name, email, message } = req.body;
+
+    if (!name || !email || !message) {
+      return res.status(400).json({ error: 'Name, email, and message are required.' });
+    }
+
+    let imageUrl = null;
+    if (req.file) {
+      const fileKey = `contacts/${Date.now()}-${req.file.originalname}`;
+      await s3Client.send(new PutObjectCommand({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: fileKey,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+      }));
+      imageUrl = `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+    }
+
+    const [result] = await pool.execute(
+      'INSERT INTO submissions (name, email, message, image_url) VALUES (?, ?, ?, ?)',
+      [name, email, message, imageUrl]
+    );
+
+    res.json({ success: true, id: result.insertId, imageUrl });
+  } catch (error) {
+    console.error('Error:', error);
+    await cloudwatch.putMetricData({
+      MetricData: [
+        {
+          MetricName: 'Errors',
+          Value: 1,
+          Unit: 'Count',
+          Dimensions: [
+            {
+              Name: 'ErrorType',
+              Value: 'ContactSubmissionError'
+            }
+          ]
+        }
+      ],
+      Namespace: 'ContactFormAPI'
+    }).catch(console.error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+app.get('/api/submissions', async (_req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM submissions ORDER BY created_at DESC');
+    res.json(rows); // Correctly send the rows as the response
+  } catch (error) {
+    await cloudwatch.putMetricData({
+      MetricData: [
+        {
+          MetricName: 'Errors',
+          Value: 1,
+          Unit: 'Count',
+          Dimensions: [
+            {
+              Name: 'ErrorType',
+              Value: 'FetchSubmissionsError'
+            }
+          ]
+        }
+      ],
+      Namespace: 'ContactFormAPI'
+    }).catch(console.error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 
